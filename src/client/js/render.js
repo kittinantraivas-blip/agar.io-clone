@@ -50,7 +50,7 @@ const drawVirus = (position, virus, graph) => {
     
     if (virusImage && !imageLoader.failedToLoad) {
         // Draw image-based virus
-        const diameter = virus.radius * 2.5;
+        const diameter = virus.radius * 3;
         
         graph.save();
         
