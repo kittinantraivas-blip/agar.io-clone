@@ -90,8 +90,12 @@ class Canvas {
     			else if (list[i] == global.KEY_DOWN) directionVertical += Number.MAX_VALUE;
     		}
     	}
-    	this.target.x += directionHorizontal;
-    	this.target.y += directionVertical;
+    	
+    	// Apply slow down effect if near virus
+    	var slowDownFactor = this.getVirusSlowDownEffect();
+    	
+    	this.target.x += directionHorizontal * slowDownFactor;
+    	this.target.y += directionVertical * slowDownFactor;
         global.target = this.target;
     }
 
@@ -117,8 +121,14 @@ class Canvas {
 
     gameInput(mouse) {
     	if (!this.directionLock) {
-    		this.parent.target.x = mouse.clientX - this.width / 2;
-    		this.parent.target.y = mouse.clientY - this.height / 2;
+    		var rawTargetX = mouse.clientX - this.width / 2;
+    		var rawTargetY = mouse.clientY - this.height / 2;
+    		
+    		// Apply slow down effect if near virus
+    		var slowDownFactor = this.parent.getVirusSlowDownEffect();
+    		
+    		this.parent.target.x = rawTargetX * slowDownFactor;
+    		this.parent.target.y = rawTargetY * slowDownFactor;
             global.target = this.parent.target;
     	}
     }
@@ -127,10 +137,49 @@ class Canvas {
         touch.preventDefault();
         touch.stopPropagation();
     	if (!this.directionLock) {
-    		this.parent.target.x = touch.touches[0].clientX - this.width / 2;
-    		this.parent.target.y = touch.touches[0].clientY - this.height / 2;
+    		var rawTargetX = touch.touches[0].clientX - this.width / 2;
+    		var rawTargetY = touch.touches[0].clientY - this.height / 2;
+    		
+    		// Apply slow down effect if near virus
+    		var slowDownFactor = this.parent.getVirusSlowDownEffect();
+    		
+    		this.parent.target.x = rawTargetX * slowDownFactor;
+    		this.parent.target.y = rawTargetY * slowDownFactor;
             global.target = this.parent.target;
     	}
+    }
+
+    // Calculate slow down effect when near virus (50% speed reduction)
+    getVirusSlowDownEffect() {
+        // Get viruses array from global scope or app.js
+        if (typeof window !== 'undefined' && window.viruses && global.player) {
+            var player = global.player;
+            var viruses = window.viruses || [];
+            
+            // Check if player is near any virus
+            for (var i = 0; i < viruses.length; i++) {
+                var virus = viruses[i];
+                if (virus && player.cells && player.cells.length > 0) {
+                    // Check each player cell
+                    for (var j = 0; j < player.cells.length; j++) {
+                        var playerCell = player.cells[j];
+                        if (playerCell) {
+                            // Calculate distance between player cell and virus
+                            var dx = playerCell.x - virus.x;
+                            var dy = playerCell.y - virus.y;
+                            var distance = Math.sqrt(dx * dx + dy * dy);
+                            
+                            // If within virus effect radius (virus radius * 3)
+                            var effectRadius = virus.radius * 3;
+                            if (distance <= effectRadius) {
+                                return 0.5; // 50% speed reduction
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return 1.0; // Normal speed
     }
 
     // Chat command callback functions.

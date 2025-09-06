@@ -3,6 +3,7 @@ var render = require('./render');
 var ChatClient = require('./chat-client');
 var Canvas = require('./canvas');
 var global = require('./global');
+var imageLoader = require('./imageLoader');
 
 var playerNameInput = document.getElementById('playerNameInput');
 var socket;
@@ -24,19 +25,46 @@ function startGame(type) {
     global.screen.width = window.innerWidth;
     global.screen.height = window.innerHeight;
 
-    document.getElementById('startMenuWrapper').style.maxHeight = '0px';
-    document.getElementById('gameAreaWrapper').style.opacity = 1;
-    if (!socket) {
-        socket = io({ query: "type=" + type });
-        setupSocket(socket);
-    }
-    if (!global.animLoopHandle)
-        animloop();
-    socket.emit('respawn');
-    window.chat.socket = socket;
-    window.chat.registerFunctions();
-    window.canvas.socket = socket;
-    global.socket = socket;
+    // Show loading screen while images load
+    showLoadingScreen();
+    
+    // Load images before starting the game
+    imageLoader.loadAllImages().then(() => {
+        // Hide loading screen and show game
+        hideLoadingScreen();
+        
+        document.getElementById('startMenuWrapper').style.maxHeight = '0px';
+        document.getElementById('gameAreaWrapper').style.opacity = 1;
+        if (!socket) {
+            socket = io({ query: "type=" + type });
+            setupSocket(socket);
+        }
+        if (!global.animLoopHandle)
+            animloop();
+        socket.emit('respawn');
+        window.chat.socket = socket;
+        window.chat.registerFunctions();
+        window.canvas.socket = socket;
+        global.socket = socket;
+    }).catch((error) => {
+        console.error('Failed to load images:', error);
+        // Continue with fallback rendering
+        hideLoadingScreen();
+        
+        document.getElementById('startMenuWrapper').style.maxHeight = '0px';
+        document.getElementById('gameAreaWrapper').style.opacity = 1;
+        if (!socket) {
+            socket = io({ query: "type=" + type });
+            setupSocket(socket);
+        }
+        if (!global.animLoopHandle)
+            animloop();
+        socket.emit('respawn');
+        window.chat.socket = socket;
+        window.chat.registerFunctions();
+        window.canvas.socket = socket;
+        global.socket = socket;
+    });
 }
 
 // Checks if the nick chosen contains valid alphanumeric characters (and underscores).
@@ -44,6 +72,74 @@ function validNick() {
     var regex = /^\w*$/;
     debug('Regex Test', regex.exec(playerNameInput.value));
     return regex.exec(playerNameInput.value) !== null;
+}
+
+// Loading screen functions
+function showLoadingScreen() {
+    // Create loading overlay if it doesn't exist
+    let loadingOverlay = document.getElementById('loadingOverlay');
+    if (!loadingOverlay) {
+        loadingOverlay = document.createElement('div');
+        loadingOverlay.id = 'loadingOverlay';
+        loadingOverlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            font-family: sans-serif;
+            color: white;
+        `;
+        loadingOverlay.innerHTML = `
+            <div style="font-size: 24px; margin-bottom: 20px;">Loading Game Assets...</div>
+            <div id="loadingProgress" style="width: 300px; height: 20px; background: #333; border-radius: 10px; overflow: hidden;">
+                <div id="loadingBar" style="height: 100%; background: #4CAF50; width: 0%; transition: width 0.3s ease;"></div>
+            </div>
+            <div id="loadingText" style="margin-top: 10px; font-size: 14px; opacity: 0.8;">Preparing images...</div>
+        `;
+        document.body.appendChild(loadingOverlay);
+    }
+    loadingOverlay.style.display = 'flex';
+    
+    // Update progress periodically
+    const progressInterval = setInterval(() => {
+        const progress = imageLoader.getLoadingProgress();
+        const progressBar = document.getElementById('loadingBar');
+        const progressText = document.getElementById('loadingText');
+        
+        if (progressBar) {
+            progressBar.style.width = (progress * 100) + '%';
+        }
+        
+        if (progressText) {
+            if (imageLoader.allImagesLoaded) {
+                progressText.textContent = 'Ready to play!';
+                clearInterval(progressInterval);
+            } else if (imageLoader.failedToLoad) {
+                progressText.textContent = 'Some images failed to load, using fallbacks';
+                clearInterval(progressInterval);
+            } else {
+                progressText.textContent = `Loading images... ${Math.round(progress * 100)}%`;
+            }
+        }
+        
+        if (imageLoader.allImagesLoaded || imageLoader.failedToLoad) {
+            clearInterval(progressInterval);
+        }
+    }, 100);
+}
+
+function hideLoadingScreen() {
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    if (loadingOverlay) {
+        loadingOverlay.style.display = 'none';
+    }
 }
 
 window.onload = function () {
@@ -134,6 +230,14 @@ continuitySetting.onchange = settings.toggleContinuity;
 
 var roundFoodSetting = document.getElementById('roundFood');
 roundFoodSetting.onchange = settings.toggleRoundFood;
+
+// Add image rendering toggle for performance testing
+if (typeof settings.toggleImageRendering === 'function') {
+    var imageRenderingSetting = document.getElementById('imageRendering');
+    if (imageRenderingSetting) {
+        imageRenderingSetting.onchange = settings.toggleImageRendering;
+    }
+}
 
 var c = window.canvas.cv;
 var graph = c.getContext('2d');
@@ -249,6 +353,9 @@ function setupSocket(socket) {
         foods = foodsList;
         viruses = virusList;
         fireFood = massList;
+        
+        // Make viruses available to canvas for slow down effect
+        window.viruses = virusList;
     });
 
     // Death.
@@ -308,24 +415,75 @@ function animloop() {
 }
 
 function gameLoop() {
+    // Performance monitoring
+    const now = performance.now();
+    if (global.performance.lastFrameTime) {
+        const frameDelta = now - global.performance.lastFrameTime;
+        global.performance.frameCount++;
+        
+        // Calculate rolling average FPS
+        if (global.performance.frameCount % 60 === 0) {
+            global.performance.averageFPS = 1000 / frameDelta;
+        }
+    }
+    global.performance.lastFrameTime = now;
+    
     if (global.gameStart) {
-        graph.fillStyle = global.backgroundColor;
-        graph.fillRect(0, 0, global.screen.width, global.screen.height);
+        // Set image smoothing settings for performance
+        if (global.images.imageSmoothingEnabled !== undefined) {
+            graph.imageSmoothingEnabled = global.images.imageSmoothingEnabled;
+            if (graph.imageSmoothingQuality !== undefined) {
+                graph.imageSmoothingQuality = global.images.imageSmoothingQuality;
+            }
+        }
+        
+        // Clear canvas with background color or transparent for background image
+        const mapImage = imageLoader.getImage('map');
+        if (mapImage && !imageLoader.failedToLoad && !global.images.forceFallback) {
+            // Use transparent background when we have a background image
+            graph.clearRect(0, 0, global.screen.width, global.screen.height);
+        } else {
+            // Use solid background color as fallback
+            graph.fillStyle = global.backgroundColor;
+            graph.fillRect(0, 0, global.screen.width, global.screen.height);
+        }
 
         render.drawGrid(global, player, global.screen, graph);
+        
+        // Performance optimization: only render visible entities
+        const visibleBounds = {
+            left: player.x - global.screen.width / 2 - 100,
+            right: player.x + global.screen.width / 2 + 100,
+            top: player.y - global.screen.height / 2 - 100,
+            bottom: player.y + global.screen.height / 2 + 100
+        };
+        
+        // Draw foods (with culling for performance)
         foods.forEach(food => {
-            let position = getPosition(food, player, global.screen);
-            render.drawFood(position, food, graph);
+            if (food.x >= visibleBounds.left && food.x <= visibleBounds.right &&
+                food.y >= visibleBounds.top && food.y <= visibleBounds.bottom) {
+                let position = getPosition(food, player, global.screen);
+                render.drawFood(position, food, graph);
+            }
         });
+        
+        // Draw ejected mass (with culling for performance)
         fireFood.forEach(fireFood => {
-            let position = getPosition(fireFood, player, global.screen);
-            render.drawFireFood(position, fireFood, playerConfig, graph);
+            if (fireFood.x >= visibleBounds.left && fireFood.x <= visibleBounds.right &&
+                fireFood.y >= visibleBounds.top && fireFood.y <= visibleBounds.bottom) {
+                let position = getPosition(fireFood, player, global.screen);
+                render.drawFireFood(position, fireFood, playerConfig, graph);
+            }
         });
+        
+        // Draw viruses (with culling for performance)
         viruses.forEach(virus => {
-            let position = getPosition(virus, player, global.screen);
-            render.drawVirus(position, virus, graph);
+            if (virus.x >= visibleBounds.left && virus.x <= visibleBounds.right &&
+                virus.y >= visibleBounds.top && virus.y <= visibleBounds.bottom) {
+                let position = getPosition(virus, player, global.screen);
+                render.drawVirus(position, virus, graph);
+            }
         });
-
 
         let borders = { // Position of the borders on the screen
             left: global.screen.width / 2 - player.x,
@@ -342,15 +500,20 @@ function gameLoop() {
             let color = 'hsl(' + users[i].hue + ', 100%, 50%)';
             let borderColor = 'hsl(' + users[i].hue + ', 100%, 45%)';
             for (var j = 0; j < users[i].cells.length; j++) {
-                cellsToDraw.push({
-                    color: color,
-                    borderColor: borderColor,
-                    mass: users[i].cells[j].mass,
-                    name: users[i].name,
-                    radius: users[i].cells[j].radius,
-                    x: users[i].cells[j].x - player.x + global.screen.width / 2,
-                    y: users[i].cells[j].y - player.y + global.screen.height / 2
-                });
+                const cell = users[i].cells[j];
+                // Only add visible cells for performance
+                if (cell.x >= visibleBounds.left && cell.x <= visibleBounds.right &&
+                    cell.y >= visibleBounds.top && cell.y <= visibleBounds.bottom) {
+                    cellsToDraw.push({
+                        color: color,
+                        borderColor: borderColor,
+                        mass: cell.mass,
+                        name: users[i].name,
+                        radius: cell.radius,
+                        x: cell.x - player.x + global.screen.width / 2,
+                        y: cell.y - player.y + global.screen.height / 2
+                    });
+                }
             }
         }
         cellsToDraw.sort(function (obj1, obj2) {
@@ -359,6 +522,13 @@ function gameLoop() {
         render.drawCells(cellsToDraw, playerConfig, global.toggleMassState, borders, graph);
 
         socket.emit('0', window.canvas.target); // playerSendTarget "Heartbeat".
+        
+        // Display FPS counter if performance is below target (for debugging)
+        if (global.performance.averageFPS < global.performance.targetFPS * 0.8 && global.performance.frameCount > 120) {
+            graph.fillStyle = 'rgba(255, 255, 0, 0.8)';
+            graph.font = '12px monospace';
+            graph.fillText(`FPS: ${Math.round(global.performance.averageFPS)}`, 10, 20);
+        }
     }
 }
 

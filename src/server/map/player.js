@@ -37,7 +37,7 @@ class Cell {
         return new sat.Circle(new sat.Vector(this.x, this.y), this.radius);
     }
 
-    move(playerX, playerY, playerTarget, slowBase, initMassLog) {
+    move(playerX, playerY, playerTarget, slowBase, initMassLog, viruses) {
         var target = {
             x: playerX - this.x + playerTarget.x,
             y: playerY - this.y + playerTarget.y
@@ -58,6 +58,68 @@ class Cell {
         if (dist < (MIN_DISTANCE + this.radius)) {
             deltaY *= dist / (MIN_DISTANCE + this.radius);
             deltaX *= dist / (MIN_DISTANCE + this.radius);
+        }
+
+        // Check for virus collisions before applying movement
+        if (viruses && viruses.length > 0) {
+            const intendedX = this.x + deltaX;
+            const intendedY = this.y + deltaY;
+            
+            for (let virus of viruses) {
+                const dx = intendedX - virus.x;
+                const dy = intendedY - virus.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const combinedRadius = this.radius + virus.radius;
+                
+                // If collision would occur
+                if (distance < combinedRadius) {
+                    // If cell can eat virus (mass >= 132), allow normal movement
+                    if (this.mass >= 132) {
+                        continue;
+                    }
+                    
+                    // Small cell collision - block movement and apply bounce
+                    const currentDx = this.x - virus.x;
+                    const currentDy = this.y - virus.y;
+                    const currentDistance = Math.sqrt(currentDx * currentDx + currentDy * currentDy);
+                    
+                    // If already overlapping, push away
+                    if (currentDistance < combinedRadius) {
+                        if (currentDistance > 0) {
+                            const pushFactor = (combinedRadius - currentDistance + 1) / currentDistance;
+                            this.x = virus.x + currentDx * pushFactor;
+                            this.y = virus.y + currentDy * pushFactor;
+                        } else {
+                            // If exactly on top, push in random direction
+                            const randomAngle = Math.random() * 2 * Math.PI;
+                            this.x = virus.x + Math.cos(randomAngle) * combinedRadius;
+                            this.y = virus.y + Math.sin(randomAngle) * combinedRadius;
+                        }
+                        
+                        // Apply speed reduction on collision
+                        this.speed = Math.max(MIN_SPEED, this.speed * 0.5);
+                        return; // Don't apply normal movement
+                    }
+                    
+                    // Block movement toward virus by projecting movement away from virus
+                    if (currentDistance > 0) {
+                        const normalX = currentDx / currentDistance;
+                        const normalY = currentDy / currentDistance;
+                        
+                        // Calculate dot product to see if moving toward virus
+                        const dotProduct = deltaX * (-normalX) + deltaY * (-normalY);
+                        if (dotProduct > 0) {
+                            // Remove component moving toward virus
+                            deltaX += dotProduct * normalX;
+                            deltaY += dotProduct * normalY;
+                            
+                            // Apply dampening to sliding movement
+                            deltaX *= 0.5;
+                            deltaY *= 0.5;
+                        }
+                    }
+                }
+            }
         }
 
         if (!isNaN(deltaY)) {
@@ -233,7 +295,7 @@ exports.Player = class {
         });
     }
 
-    move(slowBase, gameWidth, gameHeight, initMassLog) {
+    move(slowBase, gameWidth, gameHeight, initMassLog, viruses) {
         if (this.cells.length > 1) {
             if (this.timeToMerge < Date.now()) {
                 this.mergeCollidingCells();
@@ -245,7 +307,7 @@ exports.Player = class {
         let xSum = 0, ySum = 0;
         for (let i = 0; i < this.cells.length; i++) {
             let cell = this.cells[i];
-            cell.move(this.x, this.y, this.target, slowBase, initMassLog);
+            cell.move(this.x, this.y, this.target, slowBase, initMassLog, viruses);
             gameLogic.adjustForBoundaries(cell, cell.radius/3, 0, gameWidth, gameHeight);
 
             xSum += cell.x;

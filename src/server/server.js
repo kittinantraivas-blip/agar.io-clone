@@ -217,7 +217,7 @@ const tickPlayer = (currentPlayer) => {
         sockets[currentPlayer.id].disconnect();
     }
 
-    currentPlayer.move(config.slowBase, config.gameWidth, config.gameHeight, INIT_MASS_LOG);
+    currentPlayer.move(config.slowBase, config.gameWidth, config.gameHeight, INIT_MASS_LOG, map.viruses.data);
 
     const isEntityInsideCircle = (point, circle) => {
         return SAT.pointInCircle(new Vector(point.x, point.y), circle);
@@ -235,7 +235,7 @@ const tickPlayer = (currentPlayer) => {
     };
 
     const canEatVirus = (cell, cellCircle, virus) => {
-        return virus.mass < cell.mass && isEntityInsideCircle(virus, cellCircle)
+        return cell.mass >= 132 && virus.mass < cell.mass && isEntityInsideCircle(virus, cellCircle)
     }
 
     const cellsToSplit = [];
@@ -250,7 +250,9 @@ const tickPlayer = (currentPlayer) => {
 
         if (eatenVirusIndexes.length > 0) {
             cellsToSplit.push(cellIndex);
-            map.viruses.delete(eatenVirusIndexes)
+            map.viruses.delete(eatenVirusIndexes);
+            // Add +100 mass for each virus consumed
+            currentPlayer.changeCellMass(cellIndex, eatenVirusIndexes.length * 100);
         }
 
         let massGained = eatenMassIndexes.reduce((acc, index) => acc + map.massFood.data[index].mass, 0);

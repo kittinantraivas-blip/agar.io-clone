@@ -4,7 +4,7 @@
 }
 
 html, body {
-    background-color: #222;
+    background-color: #ffffff;
     overflow: hidden;
 }
 
@@ -13,7 +13,7 @@ html, body, canvas {
     height: 100%;
     margin: 0;
     padding: 0;
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(255, 255, 255, 0.4);
 
 }
 
