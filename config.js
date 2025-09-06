@@ -11,10 +11,10 @@ module.exports = {
         stroke: "#19D119",
         strokeWidth: 20,
         defaultMass: {
-            from: 200,
-            to: 250
+            from: 100,
+            to: 150
         },
-        splitMass: 100,
+        splitMass: 180,
         uniformDisposition: false,
 	},
     gameWidth: 5000,
@@ -22,7 +22,7 @@ module.exports = {
     adminPass: "DEFAULT",
     gameMass: 20000,
     maxFood: 1000,
-    maxVirus: 70,
+    maxVirus: 50,
     slowBase: 4.5,
     logChat: 0,
     networkUpdateFactor: 40,

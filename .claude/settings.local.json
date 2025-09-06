@@ -3,7 +3,9 @@
     "allow": [
       "Bash(npm start)",
       "Bash(taskkill:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(git remote add:*)",
+      "Bash(git push:*)"
     ],
     "defaultMode": "acceptEdits"
   }
