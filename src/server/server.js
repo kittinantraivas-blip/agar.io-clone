@@ -28,6 +28,10 @@ const Vector = SAT.Vector;
 
 app.use(express.static(__dirname + '/../client'));
 
+app.get('/spectate', (req, res) => {
+    res.sendFile(__dirname + '/../client/index.html');
+});
+
 io.on('connection', function (socket) {
     let type = socket.handshake.query.type;
     console.log('User has connected: ', type);

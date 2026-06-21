@@ -242,6 +242,14 @@ window.onload = function () {
         startGame('spectator');
     };
 
+    // Auto-start spectate mode when accessed via /spectate URL or ?spectate=1
+    var isSpectateUrl = window.location.pathname === '/spectate' ||
+        new URLSearchParams(window.location.search).get('spectate') === '1';
+    if (isSpectateUrl) {
+        startGame('spectator');
+        return;
+    }
+
     btn.onclick = function () {
 
         // Checks if the nick is valid.
