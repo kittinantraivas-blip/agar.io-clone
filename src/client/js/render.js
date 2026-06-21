@@ -250,7 +250,7 @@ const drawFireFood = (position, mass, playerConfig, graph) => {
         // Fallback to original shape
         graph.strokeStyle = 'hsl(' + mass.hue + ', 100%, 45%)';
         graph.fillStyle = 'hsl(' + mass.hue + ', 100%, 50%)';
-        graph.lineWidth = playerConfig.border + 2;
+        graph.lineWidth = 0;
         drawRoundObject(position, mass.radius - 1, graph);
     }
 };
