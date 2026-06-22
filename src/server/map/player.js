@@ -128,6 +128,11 @@ class Cell {
     // 2: B ate A
     static checkWhoAteWho(cellA, cellB) {
         if (!cellA || !cellB) return 0;
+        // Broad-phase: skip the expensive SAT objects when the cells can't overlap.
+        const dx = cellB.x - cellA.x;
+        const dy = cellB.y - cellA.y;
+        const reach = cellA.radius + cellB.radius;
+        if (dx * dx + dy * dy > reach * reach) return 0;
         let response = new sat.Response();
         let colliding = sat.testCircleCircle(cellA.toCircle(), cellB.toCircle(), response);
         if (!colliding) return 0;
@@ -285,6 +290,11 @@ exports.Player = class {
             for (let cellBIndex = cellAIndex + 1; cellBIndex < this.cells.length; cellBIndex++) {
                 let cellB = this.cells[cellBIndex];
                 if (!cellB) continue;
+                // Broad-phase: skip allocating SAT circles for far-apart cells.
+                const dx = cellB.x - cellA.x;
+                const dy = cellB.y - cellA.y;
+                const reach = cellA.radius + cellB.radius;
+                if (dx * dx + dy * dy > reach * reach) continue;
                 let colliding = sat.testCircleCircle(cellA.toCircle(), cellB.toCircle());
                 if (colliding) {
                     callback(this.cells, cellAIndex, cellBIndex);

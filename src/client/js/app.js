@@ -317,6 +317,11 @@ var leaderboard = [];
 var target = { x: player.x, y: player.y };
 global.target = target;
 
+// Reusable buffer + object pool for the spectator render loop to avoid
+// allocating a fresh array and one object per visible cell every frame.
+var spectatorCellsToDraw = [];
+var spectatorCellPool = [];
+
 window.canvas = new Canvas();
 window.chat = new ChatClient();
 
@@ -705,7 +710,8 @@ function gameLoop() {
                 render.drawBorder(borders, graph);
             }
 
-            var cellsToDraw = [];
+            spectatorCellsToDraw.length = 0;
+            var poolIndex = 0;
             for (var i = 0; i < users.length; i++) {
                 const netPlayer = users[i];
                 let color = 'hsl(' + netPlayer.hue + ', 100%, 0%)';
@@ -720,27 +726,32 @@ function gameLoop() {
                     const cell = netPlayer.cells[j];
                     if (cell.x >= visibleBounds.left && cell.x <= visibleBounds.right &&
                         cell.y >= visibleBounds.top && cell.y <= visibleBounds.bottom) {
-                        cellsToDraw.push({
-                            color: color,
-                            borderColor: borderColor,
-                            mass: cell.mass,
-                            name: netPlayer.name,
-                            radius: cell.radius,
-                            x: cell.x,
-                            y: cell.y,
-                            angle: (typeof cell.angle === 'number') ? cell.angle : 0,
-                            isLocal: isMine,
-                            skinUrl: playerSkinUrl,
-                            overlayColor: playerOverlayColor,
-                            turretUrl: playerTurretUrl
-                        });
+                        let slot = spectatorCellPool[poolIndex];
+                        if (!slot) {
+                            slot = {};
+                            spectatorCellPool[poolIndex] = slot;
+                        }
+                        poolIndex++;
+                        slot.color = color;
+                        slot.borderColor = borderColor;
+                        slot.mass = cell.mass;
+                        slot.name = netPlayer.name;
+                        slot.radius = cell.radius;
+                        slot.x = cell.x;
+                        slot.y = cell.y;
+                        slot.angle = (typeof cell.angle === 'number') ? cell.angle : 0;
+                        slot.isLocal = isMine;
+                        slot.skinUrl = playerSkinUrl;
+                        slot.overlayColor = playerOverlayColor;
+                        slot.turretUrl = playerTurretUrl;
+                        spectatorCellsToDraw.push(slot);
                     }
                 }
             }
-            cellsToDraw.sort(function (obj1, obj2) {
+            spectatorCellsToDraw.sort(function (obj1, obj2) {
                 return obj1.mass - obj2.mass;
             });
-            render.drawCells(cellsToDraw, playerConfig, global.toggleMassState, borders, graph);
+            render.drawCells(spectatorCellsToDraw, playerConfig, global.toggleMassState, borders, graph);
 
             graph.setTransform(1, 0, 0, 1, 0, 0);
             return;

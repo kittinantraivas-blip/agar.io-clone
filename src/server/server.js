@@ -13,7 +13,7 @@ const chatRepository = require('./repositories/chat-repository');
 const config = require('../../config');
 const util = require('./lib/util');
 const mapUtils = require('./map/map');
-const {getPosition} = require("./lib/entityUtils");
+const {getPosition, extractPlayerData} = require("./lib/entityUtils");
 
 let map = new mapUtils.Map(config);
 
@@ -213,7 +213,18 @@ const addSpectator = (socket) => {
     socket.on('gotit', function () {
         sockets[socket.id] = socket;
         spectators.push(socket.id);
+        // Join a shared room so updates are serialized once and broadcast to all
+        // spectators, instead of re-encoding the full map per spectator per tick.
+        socket.join('spectators');
         io.emit('playerJoin', { name: '' });
+    });
+
+    socket.on('disconnect', () => {
+        const index = spectators.indexOf(socket.id);
+        if (index > -1) {
+            spectators.splice(index, 1);
+        }
+        delete sockets[socket.id];
     });
 
     socket.emit("welcome", {}, {
@@ -322,14 +333,54 @@ const gameloop = () => {
     map.balanceMass(config.foodMass, config.gameMass, config.maxFood, config.maxVirus);
 };
 
+// Shared "camera" view for all spectators (full map centred). The spectator
+// client ignores this playerData except for id (treated as "not mine").
+const SPECTATOR_VIEW = {
+    x: config.gameWidth / 2,
+    y: config.gameHeight / 2,
+    cells: [],
+    massTotal: 0,
+    hue: 100,
+    id: null,
+    name: ''
+};
+
+// Spectators get the full map at a lower cadence than players. Client rendering
+// still runs at 60fps (requestAnimationFrame); this only throttles data sends.
+const SPECTATOR_TICK_SKIP = Math.max(1, Math.round(config.networkUpdateFactor / config.spectatorUpdateFactor));
+let spectatorTickCounter = 0;
+
+const sendSpectatorUpdates = () => {
+    if (spectators.length === 0) return;
+
+    spectatorTickCounter++;
+    if (spectatorTickCounter < SPECTATOR_TICK_SKIP) return;
+    spectatorTickCounter = 0;
+
+    // Build the payload once; socket.io serializes it a single time for the room
+    // instead of re-encoding the full map per spectator.
+    const spectatorPlayers = map.players.data.map(extractPlayerData);
+    io.to('spectators').emit('serverTellPlayerMove', SPECTATOR_VIEW, spectatorPlayers, map.food.data, map.massFood.data, map.viruses.data);
+};
+
 const sendUpdates = () => {
-    spectators.forEach(updateSpectator);
     map.enumerateWhatPlayersSee(function (playerData, visiblePlayers, visibleFood, visibleMass, visibleViruses) {
         sockets[playerData.id].emit('serverTellPlayerMove', playerData, visiblePlayers, visibleFood, visibleMass, visibleViruses);
         if (leaderboardChanged) {
             sendLeaderboard(sockets[playerData.id]);
         }
     });
+
+    sendSpectatorUpdates();
+
+    // Leaderboard changes are rare, so push them to the spectator room unthrottled
+    // so a change isn't dropped on a skipped spectator tick.
+    if (leaderboardChanged && spectators.length > 0) {
+        io.to('spectators').emit('leaderboard', {
+            players: map.players.data.length,
+            leaderboard
+        });
+    }
 
     leaderboardChanged = false;
 };
@@ -339,21 +390,6 @@ const sendLeaderboard = (socket) => {
         players: map.players.data.length,
         leaderboard
     });
-}
-const updateSpectator = (socketID) => {
-    let playerData = {
-        x: config.gameWidth / 2,
-        y: config.gameHeight / 2,
-        cells: [],
-        massTotal: 0,
-        hue: 100,
-        id: socketID,
-        name: ''
-    };
-    sockets[socketID].emit('serverTellPlayerMove', playerData, map.players.data, map.food.data, map.massFood.data, map.viruses.data);
-    if (leaderboardChanged) {
-        sendLeaderboard(sockets[socketID]);
-    }
 }
 
 setInterval(tickGame, 1000 / 60);

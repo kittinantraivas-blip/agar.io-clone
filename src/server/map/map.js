@@ -1,6 +1,6 @@
 "use strict";
 
-const {isVisibleEntity} = require("../lib/entityUtils");
+const {isVisibleEntity, extractPlayerData} = require("../lib/entityUtils");
 
 exports.foodUtils = require('./food');
 exports.virusUtils = require('./virus');
@@ -42,32 +42,17 @@ exports.Map = class {
             var visibleViruses = this.viruses.data.filter(entity => isVisibleEntity(entity, currentPlayer));
             var visibleMass = this.massFood.data.filter(entity => isVisibleEntity(entity, currentPlayer));
 
-            const extractData = (player) => {
-                return {
-                    x: player.x,
-                    y: player.y,
-                    cells: player.cells,
-                    massTotal: Math.round(player.massTotal),
-                    hue: player.hue,
-                    id: player.id,
-                    name: player.name,
-                    skinUrl: player.skinUrl || null,
-                    overlayColor: player.overlayColor || null,
-                    turretUrl: player.turretUrl || null
-                };
-            }
-
             var visiblePlayers = [];
             for (let player of this.players.data) {
                 for (let cell of player.cells) {
                     if (isVisibleEntity(cell, currentPlayer)) {
-                        visiblePlayers.push(extractData(player));
+                        visiblePlayers.push(extractPlayerData(player));
                         break;
                     }
                 }
             }
 
-            callback(extractData(currentPlayer), visiblePlayers, visibleFood, visibleMass, visibleViruses);
+            callback(extractPlayerData(currentPlayer), visiblePlayers, visibleFood, visibleMass, visibleViruses);
         }
     }
 }
